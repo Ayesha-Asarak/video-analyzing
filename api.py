@@ -1,11 +1,26 @@
-from configparser import ConfigParser
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 import google.generativeai as genai
-import streamlit as st
-import textwrap
 from youtube_transcript_api import YouTubeTranscriptApi, NoTranscriptFound
 from googleapiclient.discovery import build
 import re
+import main
+from configparser import ConfigParser
+import textwrap
+app = FastAPI()
 
+# CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Allow all origins
+    allow_credentials=True,
+    allow_methods=["*"],  # Allow all methods
+    allow_headers=["*"],  # Allow all headers
+)
+
+class YouTubeLink(BaseModel):
+    youtube_link: str
 def to_markdown(text):
     text = text.replace("•", "  *")
     indented_text = textwrap.indent(text, "\n ", predicate=lambda _: True)
@@ -42,7 +57,6 @@ safety_settings = [
         "threshold": "BLOCK_NONE",
     },
 ]
-
 def extract_video_id(youtube_link):
     video_id = None
     patterns = [
@@ -78,8 +92,7 @@ def fetch_youtube_transcript(youtube_link, languages=('en', 'hi')):
         transcript_text = " ".join([item['text'] for item in transcript])
         return transcript_text
     except Exception as e:
-        st.error(f"Error fetching transcript: {str(e)}")
-        return None
+        raise HTTPException(status_code=500, detail=f"Error fetching transcript: {str(e)}")
 
 def fetch_video_description(youtube_link):
     try:
@@ -97,40 +110,27 @@ def fetch_video_description(youtube_link):
         description = response["items"][0]["snippet"]["description"]
         return description
     except Exception as e:
-        st.error(f"Error fetching video description: {str(e)}")
-        return None
+        raise HTTPException(status_code=500, detail=f"Error fetching video description: {str(e)}")
 
-# Function to generate summary from provided text
 def generate_summary(text):
     try:
         prompt = f"Describe the text considering it is a video in English: {text}"
         response = model_gemini_pro.generate_content(prompt, safety_settings=safety_settings)
         return response.text  # Access the 'text' attribute of the response object
     except Exception as e:
-        st.error(f"Error generating summary: {str(e)}")
-        return None
+        raise HTTPException(status_code=500, detail=f"Error generating summary: {str(e)}")
 
-def main():
-    st.title("YouTube Video Summary Generator")
-    youtube_link = st.text_input("Enter the YouTube link you want to summarize")
-    generate_button = st.button("Generate Summary")
+@app.post("/generate-summary")
+def generate_summary_endpoint(link: YouTubeLink):
+    video_text = fetch_youtube_transcript(link.youtube_link)
+    if not video_text:
+        video_text = fetch_video_description(link.youtube_link)
 
-    if generate_button and youtube_link:
-        st.info("Please wait....")
-        video_text = fetch_youtube_transcript(youtube_link)
-        if not video_text:
-            # st.info(" not found, fetching description... Please wait.")
-            video_text = fetch_video_description(youtube_link)
-
-        if video_text:
-            st.info("Generating summary... Please wait.")
-            summary = generate_summary(video_text)
-            if summary:
-                st.success(summary)
-            else:
-                st.error("Failed to generate summary.")
+    if video_text:
+        summary = generate_summary(video_text)
+        if summary:
+            return {"summary": summary}
         else:
-            st.error("Failed to get summary.")
-
-if __name__ == "__main__":
-    main()
+            raise HTTPException(status_code=500, detail="Failed to generate summary.")
+    else:
+        raise HTTPException(status_code=500, detail="Failed to get summary.")
