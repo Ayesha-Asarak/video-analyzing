@@ -112,6 +112,7 @@ def fetch_video_description(youtube_link):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error fetching video description: {str(e)}")
 
+# def generate_summary(text):
 def generate_summary(text):
     try:
         prompt = f"Describe the text considering it is a video in English: {text}"
