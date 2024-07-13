@@ -121,6 +121,7 @@ def generate_summary(text):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error generating summary: {str(e)}")
 
+# @app.post("/generate-summary")
 @app.post("/generate-summary")
 def generate_summary_endpoint(link: YouTubeLink):
     video_text = fetch_youtube_transcript(link.youtube_link)
